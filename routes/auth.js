@@ -2,6 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User from '../models/User.js';
+import PendingUser from '../models/PendingUser.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { sendVerificationEmail, sendPasswordResetEmail, generateVerificationCode } from '../services/emailService.js';
 
@@ -75,7 +76,7 @@ const isSessionExpired = (user, sessionType = 'regular') => {
   return false;
 };
 
-// Sign up
+// Sign up - Step 1: Collect data and send verification email (don't save to MongoDB yet)
 router.post('/signup', async (req, res) => {
   try {
     const { email, phone, password, dateOfBirth, gender, firstName, lastName, role = 'customer' } = req.body;
@@ -86,91 +87,73 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ message: 'Please provide a valid email address' });
     }
 
-    // Check if user already exists
+    // Check if user already exists and is verified
     const existingUser = await User.findOne({
       $or: [{ email }, { phone }]
     });
     
-    if (existingUser) {
-      if (existingUser.emailVerified) {
-        return res.status(400).json({ message: 'User already exists with this email or phone' });
-      } else {
-        // User exists but email not verified, update verification code and resend
-        const verificationCode = generateVerificationCode();
-        const verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    if (existingUser && existingUser.emailVerified) {
+      return res.status(400).json({ message: 'User already exists with this email or phone' });
+    }
 
-        existingUser.verificationCode = verificationCode;
-        existingUser.verificationCodeExpires = verificationExpires;
-        await existingUser.save();
-
-        // Send verification email
-        const emailResult = await sendVerificationEmail(email, verificationCode, existingUser.firstName);
-        
-        if (!emailResult.success) {
-          console.error('Failed to send verification email:', emailResult.error);
-          return res.status(500).json({ message: 'Failed to send verification email. Please try again.' });
-        }
-
-        return res.status(200).json({
-          message: 'Account exists but not verified. New verification code sent to your email.',
-          user: {
-            id: existingUser._id,
-            email: existingUser.email,
-            firstName: existingUser.firstName,
-            lastName: existingUser.lastName,
-            role: existingUser.role,
-            emailVerified: false
-          },
-          requiresVerification: true
-        });
-      }
+    // If user exists but not verified, we'll allow re-registration (overwrite)
+    if (existingUser && !existingUser.emailVerified) {
+      // Delete the unverified user record
+      await User.findByIdAndDelete(existingUser._id);
+      console.log(`🗑️ Deleted unverified user record for ${email}`);
     }
 
     // Generate verification code
     const verificationCode = generateVerificationCode();
     const verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-    // Create new user (but not verified yet)
-    const newUser = new User({
+    console.log(`📧 Generated verification code for ${email}: ${verificationCode}`);
+    console.log(`⏰ Verification code expires at: ${verificationExpires}`);
+
+    // Store registration data temporarily in session/memory (not in main User collection)
+    // We'll create a temporary collection for pending registrations
+    
+    // Remove any existing pending registration for this email
+    await PendingUser.findOneAndDelete({ email });
+    
+    // Create pending registration record
+    const pendingUser = new PendingUser({
       email,
       phone,
-      password,
+      password, // Will be hashed by the schema
       dateOfBirth,
       gender,
       firstName,
       lastName,
       role,
-      isActive: true,
-      emailVerified: false,
       verificationCode,
-      verificationCodeExpires: verificationExpires
+      verificationCodeExpires: verificationExpires,
+      createdAt: new Date()
     });
 
-    await newUser.save();
+    await pendingUser.save();
+    console.log(`📝 Saved pending registration for ${email}`);
 
     // Send verification email
+    console.log(`📤 Attempting to send verification email to: ${email}`);
     const emailResult = await sendVerificationEmail(email, verificationCode, firstName);
     
     if (!emailResult.success) {
-      console.error('Failed to send verification email:', emailResult.error);
-      // Delete the user if email fails to send
-      await User.findByIdAndDelete(newUser._id);
+      console.error('❌ Failed to send verification email:', emailResult.error);
+      // Delete the pending user if email fails to send
+      await PendingUser.findByIdAndDelete(pendingUser._id);
       return res.status(500).json({ message: 'Failed to send verification email. Please try again with a valid email address.' });
     }
 
-    res.status(201).json({
-      message: 'Account created successfully! Please check your email for verification code.',
-      user: {
-        id: newUser._id,
-        email: newUser.email,
-        firstName: newUser.firstName,
-        lastName: newUser.lastName,
-        role: newUser.role,
-        emailVerified: false
-      },
-      requiresVerification: true
+    console.log(`✅ Verification email sent successfully to: ${email}`);
+
+    res.status(200).json({
+      message: 'Verification code sent to your email. Please verify to complete registration.',
+      requiresVerification: true,
+      email: email // Don't send sensitive data
     });
   } catch (error) {
+    console.error('Signup error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -356,13 +339,65 @@ router.post('/logout', authenticateToken, async (req, res) => {
 });
 
 // Verify email with code
+// Verify email with code - Step 2: Create actual user account after verification
 router.post('/verify-email', async (req, res) => {
   try {
     const { email, verificationCode } = req.body;
 
+    // First, check if this is a pending user registration
+    const pendingUser = await PendingUser.findOne({ email });
+    
+    if (pendingUser) {
+      // This is a new registration - verify code and create actual user
+      console.log(`📧 Verifying pending registration for ${email}`);
+      
+      if (!pendingUser.verificationCode || pendingUser.verificationCode !== verificationCode) {
+        return res.status(400).json({ message: 'Invalid verification code' });
+      }
+
+      if (pendingUser.verificationCodeExpires < new Date()) {
+        // Clean up expired pending registration
+        await PendingUser.findByIdAndDelete(pendingUser._id);
+        return res.status(400).json({ message: 'Verification code has expired. Please register again.' });
+      }
+
+      // Verification successful - create the actual user account
+      console.log(`✅ Creating verified user account for ${email}`);
+      
+      const newUser = new User({
+        email: pendingUser.email,
+        phone: pendingUser.phone,
+        password: pendingUser.password, // Already hashed by PendingUser schema
+        dateOfBirth: pendingUser.dateOfBirth,
+        gender: pendingUser.gender,
+        firstName: pendingUser.firstName,
+        lastName: pendingUser.lastName,
+        role: pendingUser.role,
+        isActive: true,
+        emailVerified: true, // Already verified!
+        verificationCode: null,
+        verificationCodeExpires: null
+      });
+
+      await newUser.save();
+      console.log(`✅ User account created successfully for ${email}`);
+
+      // Clean up the pending registration
+      await PendingUser.findByIdAndDelete(pendingUser._id);
+      console.log(`🗑️ Cleaned up pending registration for ${email}`);
+
+      res.json({
+        message: 'Email verified successfully! Your account has been created. You can now sign in.',
+        emailVerified: true,
+        accountCreated: true
+      });
+      return;
+    }
+
+    // If not a pending user, check if it's an existing user (old flow compatibility)
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'No pending registration or user found for this email' });
     }
 
     if (user.emailVerified) {
@@ -377,7 +412,7 @@ router.post('/verify-email', async (req, res) => {
       return res.status(400).json({ message: 'Verification code has expired' });
     }
 
-    // Verify the email
+    // Verify the email (old flow)
     user.emailVerified = true;
     user.verificationCode = null;
     user.verificationCodeExpires = null;
@@ -388,28 +423,62 @@ router.post('/verify-email', async (req, res) => {
       emailVerified: true
     });
   } catch (error) {
+    console.error('Email verification error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Resend verification code
+// Resend verification code
 router.post('/resend-verification', async (req, res) => {
   try {
     const { email } = req.body;
 
+    // First, check if this is a pending user registration
+    const pendingUser = await PendingUser.findOne({ email });
+    
+    if (pendingUser) {
+      // This is a pending registration - update verification code
+      console.log(`📧 Resending verification code for pending registration: ${email}`);
+      
+      const verificationCode = generateVerificationCode();
+      const verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      
+      pendingUser.verificationCode = verificationCode;
+      pendingUser.verificationCodeExpires = verificationExpires;
+      await pendingUser.save();
+
+      // Send verification email
+      const emailResult = await sendVerificationEmail(email, verificationCode, pendingUser.firstName);
+      
+      if (!emailResult.success) {
+        console.error('Failed to resend verification email:', emailResult.error);
+        return res.status(500).json({ message: 'Failed to resend verification email. Please try again.' });
+      }
+
+      res.json({
+        message: 'Verification code sent to your email',
+        verificationCodeSentAt: new Date()
+      });
+      return;
+    }
+
+    // If not a pending user, check existing users (old flow compatibility)
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'No pending registration or user found for this email' });
     }
 
     if (user.emailVerified) {
       return res.status(400).json({ message: 'Email is already verified' });
     }
 
-    // Generate new verification code
+    // Generate new verification code for existing user
     const verificationCode = generateVerificationCode();
     const verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
+    console.log(`📧 Resending verification code for existing user ${email}: ${verificationCode}`);
+    
     user.verificationCode = verificationCode;
     user.verificationCodeExpires = verificationExpires;
     await user.save();
@@ -418,13 +487,16 @@ router.post('/resend-verification', async (req, res) => {
     const emailResult = await sendVerificationEmail(email, verificationCode, user.firstName);
     
     if (!emailResult.success) {
-      return res.status(500).json({ message: 'Failed to send verification email' });
+      console.error('Failed to resend verification email:', emailResult.error);
+      return res.status(500).json({ message: 'Failed to resend verification email. Please try again.' });
     }
 
     res.json({
-      message: 'Verification code sent successfully. Please check your email.',
+      message: 'Verification code sent to your email',
+      verificationCodeSentAt: new Date()
     });
   } catch (error) {
+    console.error('Resend verification error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

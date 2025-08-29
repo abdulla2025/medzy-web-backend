@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import MedicineReminder from '../models/MedicineReminder.js';
-import { sendEmail } from './emailService.js';
+import { sendVerificationEmail, sendEmail } from './emailService.js';
 import User from '../models/User.js';
 
 class NotificationService {

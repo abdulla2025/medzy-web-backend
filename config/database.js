@@ -12,14 +12,12 @@ const connectDB = async () => {
   try {
     // Set global mongoose options for better timeout handling
     mongoose.set('bufferCommands', false);
-    mongoose.set('bufferMaxEntries', 0);
     
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       // Connection timeout options for production
       serverSelectionTimeoutMS: 10000, // 10 seconds (reduced from 30)
       socketTimeoutMS: 20000, // 20 seconds (reduced from 45)
       connectTimeoutMS: 10000, // 10 seconds
-      bufferMaxEntries: 0,
       maxPoolSize: 5, // Reduced from 10 to 5 for better resource management
       minPoolSize: 2,  // Reduced from 5 to 2
       maxIdleTimeMS: 15000, // Reduced from 30 to 15 seconds

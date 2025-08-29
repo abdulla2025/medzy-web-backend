@@ -1,179 +1,355 @@
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
 
-// Email configuration
-const createTransporter = () => {
-  try {
-    // Use Gmail configuration for all environments
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      },
-      debug: false, // Disable debug output
-      logger: false // Disable logging
-    });
-    
-    // Test the connection
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error('❌ Gmail SMTP connection error');
-      } else {
-        console.log('✅ Gmail SMTP connection verified successfully');
-      }
-    });
-    
-    return transporter;
-  } catch (error) {
-    console.error('❌ Error creating Gmail transporter');
-    throw error;
-  }
-};
+// Load environment variables
+dotenv.config();
 
 // Generate verification code
 export const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
 };
 
-// Send verification email
-export const sendVerificationEmail = async (email, verificationCode, firstName) => {
+// Email configuration
+const createTransporter = () => {
   try {
-    console.log(`Attempting to send verification email to: ${email}`);
-    const transporter = createTransporter();
+    // Check if email credentials are properly configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('❌ Email credentials not configured in .env file');
+      throw new Error('Missing email credentials');
+    }
+
+    // Use Gmail configuration for all environments
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // Use TLS
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      },
+      debug: false, // Disable debug output
+      logger: false // Disable logging
+    });
+
+    console.log('🔧 Initializing Email Service...');
+    console.log(`📧 Using email: ${process.env.EMAIL_USER}`);
     
+    // Verify SMTP connection configuration
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('❌ Gmail SMTP connection failed:', error.message);
+        console.log('💡 Make sure you are using a Gmail App Password (not regular password)');
+        console.log('💡 To create App Password: Gmail Settings > Security > 2-Step Verification > App Passwords');
+      } else {
+        console.log('✅ Gmail SMTP connection verified successfully');
+      }
+    });
+
+    return transporter;
+  } catch (error) {
+    console.error('❌ Error creating email transporter:', error.message);
+    throw error;
+  }
+};
+
+// Initialize transporter
+let transporter;
+try {
+  transporter = createTransporter();
+  console.log('📧 Email service initialized successfully');
+} catch (error) {
+  console.error('❌ Failed to initialize email service:', error.message);
+}
+
+// Send verification email
+export const sendVerificationEmail = async (email, verificationCode, firstName = 'User') => {
+  try {
+    if (!transporter) {
+      console.error('❌ Email transporter not initialized');
+      return { success: false, error: 'Email service not available' };
+    }
+
+    console.log(`Attempting to send verification email to: ${email}`);
+    
+    // Verify connection before sending
+    await transporter.verify();
+    console.log('✅ Gmail SMTP connection verified successfully');
+
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@medsy.com',
+      from: {
+        name: 'Medzy Healthcare',
+        address: process.env.EMAIL_USER
+      },
       to: email,
-      subject: '💊 Medsy - Verify Your Email Address',
+      subject: 'Verify Your Medzy Account',
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-          <div style="background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%); padding: 30px; border-radius: 15px; text-align: center; margin-bottom: 30px;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">💊 Medsy</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Your Health, Our Priority</p>
-          </div>
-          
-          <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h2 style="color: #1f2937; margin-bottom: 20px;">Welcome to Medsy, ${firstName}! 🎉</h2>
-            
-            <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-              Thank you for joining Medsy! To complete your registration and secure your account, please verify your email address using the code below:
-            </p>
-            
-            <div style="background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); padding: 25px; border-radius: 10px; text-align: center; margin: 25px 0; border: 2px solid #e5e7eb;">
-              <p style="color: #374151; font-size: 14px; margin-bottom: 10px; font-weight: 600;">Your Verification Code:</p>
-              <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1f2937; background: white; padding: 15px; border-radius: 8px; display: inline-block; border: 2px solid #d1d5db;">
-                ${verificationCode}
-              </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Verify Your Account</title>
+          <style>
+            body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+              line-height: 1.6; 
+              color: #333; 
+              background-color: #f4f4f4; 
+              margin: 0; 
+              padding: 20px; 
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 0 auto; 
+              background: white; 
+              padding: 40px; 
+              border-radius: 10px; 
+              box-shadow: 0 5px 15px rgba(0,0,0,0.1); 
+            }
+            .header { 
+              text-align: center; 
+              margin-bottom: 30px; 
+            }
+            .logo { 
+              font-size: 28px; 
+              font-weight: bold; 
+              color: #10B981; 
+              margin-bottom: 10px; 
+            }
+            .verification-code { 
+              background: #f8f9fa; 
+              border: 2px solid #10B981; 
+              border-radius: 8px; 
+              padding: 20px; 
+              text-align: center; 
+              font-size: 32px; 
+              font-weight: bold; 
+              letter-spacing: 8px; 
+              color: #10B981; 
+              margin: 20px 0; 
+              font-family: 'Courier New', monospace; 
+            }
+            .footer { 
+              text-align: center; 
+              margin-top: 30px; 
+              padding-top: 20px; 
+              border-top: 1px solid #eee; 
+              color: #666; 
+              font-size: 14px; 
+            }
+            .warning { 
+              background-color: #fff3cd; 
+              border-left: 4px solid #ffc107; 
+              padding: 12px; 
+              margin: 20px 0; 
+              border-radius: 4px; 
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">🏥 Medzy</div>
+              <h2>Welcome to Medzy Healthcare!</h2>
+              <p>Hi ${firstName}, thank you for joining our healthcare platform.</p>
             </div>
             
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-              ⏰ This verification code will expire in <strong>15 minutes</strong> for your security.
-            </p>
+            <p>To complete your registration, please enter the following verification code:</p>
             
-            <div style="background: #fef3c7; padding: 15px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0;">
-              <p style="color: #92400e; font-size: 14px; margin: 0;">
-                🔒 <strong>Security Note:</strong> Never share this code with anyone. Medsy will never ask for your verification code via phone or other methods.
+            <div class="verification-code">${verificationCode}</div>
+            
+            <div class="warning">
+              <strong>⏰ Important:</strong> This code will expire in 15 minutes for your security.
+            </div>
+            
+            <p>If you didn't create an account with us, please ignore this email.</p>
+            
+            <div class="footer">
+              <p>
+                <strong>Medzy Healthcare</strong><br>
+                Your trusted online pharmacy and healthcare companion
+              </p>
+              <p style="font-size: 12px; color: #999;">
+                This is an automated message. Please do not reply to this email.
               </p>
             </div>
-            
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <h3 style="color: #1f2937; margin-bottom: 15px;">🎯 What's Next?</h3>
-              <ul style="color: #4b5563; padding-left: 20px;">
-                <li style="margin-bottom: 8px;">Complete your email verification</li>
-                <li style="margin-bottom: 8px;">Set up your health profile</li>
-                <li style="margin-bottom: 8px;">Explore Medsy's features</li>
-                <li>Connect with healthcare providers</li>
-              </ul>
-            </div>
           </div>
-          
-          <div style="text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px;">
-            <p>Need help? Contact our support team at <a href="mailto:support@medsy.com" style="color: #3b82f6;">support@medsy.com</a></p>
-            <p style="margin-top: 10px;">© 2025 Medsy. All rights reserved.</p>
-          </div>
-        </div>
-      `
+        </body>
+        </html>
+      `,
+      text: `Welcome to Medzy Healthcare!
+      
+Hi ${firstName},
+
+Thank you for joining our healthcare platform. To complete your registration, please enter the following verification code:
+
+${verificationCode}
+
+This code will expire in 15 minutes for your security.
+
+If you didn't create an account with us, please ignore this email.
+
+Best regards,
+Medzy Healthcare Team`
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const result = await transporter.sendMail(mailOptions);
     console.log('Verification email sent successfully:', {
-      messageId: info.messageId,
+      messageId: result.messageId,
       to: email,
-      previewUrl: nodemailer.getTestMessageUrl(info) // For Ethereal email testing
+      service: 'Gmail'
     });
-    return { success: true, messageId: info.messageId, previewUrl: nodemailer.getTestMessageUrl(info) };
+    
+    return { 
+      success: true, 
+      messageId: result.messageId,
+      service: 'Gmail',
+      emailSent: true
+    };
+    
   } catch (error) {
-    console.error('Error sending verification email:', error);
-    return { success: false, error: error.message };
+    console.error('❌ Error sending verification email:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to send email'
+    };
   }
 };
 
 // Send password reset email
-export const sendPasswordResetEmail = async (email, resetToken, firstName) => {
+export const sendPasswordResetEmail = async (email, resetToken, firstName = 'User') => {
   try {
-    console.log(`Attempting to send password reset email to: ${email}`);
-    const transporter = createTransporter();
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/reset-password?token=${resetToken}`;
-    
-    console.log('Reset URL generated:', resetUrl);
-    
+    if (!transporter) {
+      return { success: false, error: 'Email service not available' };
+    }
+
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@medsy.com',
+      from: {
+        name: 'Medzy Healthcare',
+        address: process.env.EMAIL_USER
+      },
       to: email,
-      subject: '🔒 Medsy - Password Reset Request',
+      subject: 'Reset Your Medzy Password',
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-          <div style="background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%); padding: 30px; border-radius: 15px; text-align: center; margin-bottom: 30px;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">💊 Medsy</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Your Health, Our Priority</p>
-          </div>
-          
-          <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h2 style="color: #1f2937; margin-bottom: 20px;">Password Reset Request 🔒</h2>
-            
-            <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-              Hello ${firstName}, we received a request to reset your password for your Medsy account. If you made this request, click the button below to reset your password:
-            </p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                🔑 Reset My Password
-              </a>
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reset Your Password</title>
+          <style>
+            body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+              line-height: 1.6; 
+              color: #333; 
+              background-color: #f4f4f4; 
+              margin: 0; 
+              padding: 20px; 
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 0 auto; 
+              background: white; 
+              padding: 40px; 
+              border-radius: 10px; 
+              box-shadow: 0 5px 15px rgba(0,0,0,0.1); 
+            }
+            .header { 
+              text-align: center; 
+              margin-bottom: 30px; 
+            }
+            .logo { 
+              font-size: 28px; 
+              font-weight: bold; 
+              color: #10B981; 
+              margin-bottom: 10px; 
+            }
+            .reset-button { 
+              display: inline-block; 
+              background-color: #10B981; 
+              color: white; 
+              padding: 15px 30px; 
+              text-decoration: none; 
+              border-radius: 5px; 
+              margin: 20px 0; 
+              font-weight: bold; 
+            }
+            .footer { 
+              text-align: center; 
+              margin-top: 30px; 
+              padding-top: 20px; 
+              border-top: 1px solid #eee; 
+              color: #666; 
+              font-size: 14px; 
+            }
+            .warning { 
+              background-color: #fff3cd; 
+              border-left: 4px solid #ffc107; 
+              padding: 12px; 
+              margin: 20px 0; 
+              border-radius: 4px; 
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">🏥 Medzy</div>
+              <h2>Password Reset Request</h2>
+              <p>Hi ${firstName},</p>
             </div>
             
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-              ⏰ This password reset link will expire in <strong>1 hour</strong> for your security.
-            </p>
+            <p>We received a request to reset your password for your Medzy account.</p>
             
-            <div style="background: #fee2e2; padding: 15px; border-radius: 8px; border-left: 4px solid #ef4444; margin: 20px 0;">
-              <p style="color: #dc2626; font-size: 14px; margin: 0;">
-                🚨 <strong>Security Alert:</strong> If you didn't request a password reset, please ignore this email or contact our support team immediately.
+            <div style="text-align: center;">
+              <a href="${resetUrl}" class="reset-button">Reset Your Password</a>
+            </div>
+            
+            <div class="warning">
+              <strong>⏰ Important:</strong> This link will expire in 1 hour for your security.
+            </div>
+            
+            <p>If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
+            
+            <div class="footer">
+              <p>
+                <strong>Medzy Healthcare</strong><br>
+                Your trusted online pharmacy and healthcare companion
+              </p>
+              <p style="font-size: 12px; color: #999;">
+                This is an automated message. Please do not reply to this email.
               </p>
             </div>
-            
-            <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
-              <p style="color: #4b5563; font-size: 14px; margin: 0;">
-                <strong>Alternative:</strong> If the button doesn't work, copy and paste this link into your browser:<br>
-                <span style="word-break: break-all; color: #3b82f6;">${resetUrl}</span>
-              </p>
-            </div>
           </div>
-          
-          <div style="text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px;">
-            <p>Need help? Contact our support team at <a href="mailto:support@medsy.com" style="color: #3b82f6;">support@medsy.com</a></p>
-            <p style="margin-top: 10px;">© 2025 Medsy. All rights reserved.</p>
-          </div>
-        </div>
-      `
+        </body>
+        </html>
+      `,
+      text: `Password Reset Request
+      
+Hi ${firstName},
+
+We received a request to reset your password for your Medzy account.
+
+Please click the following link to reset your password:
+${resetUrl}
+
+This link will expire in 1 hour for your security.
+
+If you didn't request this password reset, please ignore this email.
+
+Best regards,
+Medzy Healthcare Team`
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Password reset email sent successfully:', {
-      messageId: info.messageId,
-      to: email,
-      previewUrl: nodemailer.getTestMessageUrl(info) // For Ethereal email testing
-    });
-    return { success: true, messageId: info.messageId, previewUrl: nodemailer.getTestMessageUrl(info) };
+    const result = await transporter.sendMail(mailOptions);
+    return { success: true, messageId: result.messageId };
+    
   } catch (error) {
     console.error('Error sending password reset email:', error);
     return { success: false, error: error.message };
@@ -181,33 +357,39 @@ export const sendPasswordResetEmail = async (email, resetToken, firstName) => {
 };
 
 // Generic send email function
-export const sendEmail = async ({ to, subject, html, text }) => {
+export const sendEmail = async (emailOptions) => {
   try {
-    console.log(`Attempting to send email to: ${to}`);
-    const transporter = createTransporter();
-    
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@medsy.com',
-      to,
-      subject,
-      html: html || text,
-      text
-    };
+    if (!transporter) {
+      console.error('❌ Email transporter not initialized');
+      return { success: false, error: 'Email service not available' };
+    }
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent successfully to ${to}`);
-    return result;
+    // Verify connection before sending
+    await transporter.verify();
+
+    const result = await transporter.sendMail(emailOptions);
+    console.log('Email sent successfully:', {
+      messageId: result.messageId,
+      to: emailOptions.to
+    });
+    
+    return { 
+      success: true, 
+      messageId: result.messageId
+    };
+    
   } catch (error) {
-    console.error(`❌ Failed to send email to ${to}:`, error.message);
-    throw error;
+    console.error('❌ Error sending email:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to send email'
+    };
   }
 };
 
-// Test email service on startup
-console.log('🔧 Initializing Email Service...');
-try {
-  const testTransporter = createTransporter();
-  console.log('📧 Email service initialized successfully');
-} catch (error) {
-  console.error('❌ Email service initialization failed:', error.message);
-}
+export default {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  generateVerificationCode,
+  sendEmail
+};

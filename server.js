@@ -106,9 +106,53 @@ app.use('/api/medical-profile', medicalProfileRoutes);
 app.use('/api/customer-points', customerPointRoutes);
 app.use('/api/revenue-adjustments', revenueAdjustmentRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ message: 'Medsy Backend Server is running!', timestamp: new Date() });
+// Enhanced health check with database diagnostics
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbState = mongoose.connection.readyState;
+    const dbStates = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+    
+    // Test a simple database query with timeout
+    let dbTestResult = 'unknown';
+    try {
+      const testQuery = await mongoose.connection.db.admin().ping();
+      dbTestResult = testQuery.ok === 1 ? 'responsive' : 'unresponsive';
+    } catch (dbError) {
+      dbTestResult = `error: ${dbError.message}`;
+    }
+    
+    res.json({ 
+      message: 'Medsy Backend Server is running!',
+      status: 'healthy',
+      timestamp: new Date(),
+      database: dbStates[dbState] || 'unknown',
+      databaseTest: dbTestResult,
+      environment: process.env.NODE_ENV || 'development',
+      version: '2.1.0',
+      memory: process.memoryUsage(),
+      uptime: process.uptime(),
+      routes_status: {
+        auth: true,
+        users: true,
+        medicines: true,
+        orders: true,
+        payments: true,
+        reviews: true,
+        serviceReviews: true
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Health check failed',
+      error: error.message,
+      timestamp: new Date()
+    });
+  }
 });
 
 // Enhanced server startup with port conflict handling

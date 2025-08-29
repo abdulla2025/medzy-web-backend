@@ -182,7 +182,7 @@ router.post('/signin', async (req, res) => {
     const userAgent = req.headers['user-agent'] || 'Unknown Device';
     const clientIP = req.ip || req.connection.remoteAddress || 'Unknown IP';
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).maxTimeMS(5000);
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -255,6 +255,15 @@ router.post('/signin', async (req, res) => {
     });
   } catch (error) {
     console.error('Sign in error:', error);
+    
+    // Handle specific timeout errors
+    if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
+      return res.status(503).json({ 
+        message: 'Database temporarily unavailable', 
+        error: 'Connection timeout' 
+      });
+    }
+    
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

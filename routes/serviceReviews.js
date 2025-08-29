@@ -187,12 +187,14 @@ router.get('/public', async (req, res) => {
     .populate('order', 'trackingId createdAt')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limit);
+    .limit(limit)
+    .maxTimeMS(5000) // 5 second timeout
+    .lean(); // Improve performance
 
     const total = await ServiceReview.countDocuments({
       isActive: true,
       isPublic: true
-    });
+    }).maxTimeMS(3000); // 3 second timeout
 
     // Calculate overall service statistics
     const stats = await ServiceReview.aggregate([
@@ -211,7 +213,7 @@ router.get('/public', async (req, res) => {
           recommendationRate: { $avg: { $cond: ['$wouldRecommend', 1, 0] } }
         }
       }
-    ]);
+    ]).maxTimeMS(5000); // 5 second timeout for aggregation
 
     const serviceStats = stats[0] || {
       avgDeliverySpeed: 0,
@@ -248,6 +250,15 @@ router.get('/public', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error fetching public service reviews:', error);
+    
+    // Handle specific timeout errors
+    if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
+      return res.status(503).json({ 
+        message: 'Database temporarily unavailable', 
+        error: 'Connection timeout' 
+      });
+    }
+    
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });

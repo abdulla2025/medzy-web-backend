@@ -552,7 +552,10 @@ router.get('/public', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
     
-    const reviews = await Review.find({})
+    const reviews = await Review.find({
+      isActive: true,
+      rating: { $gte: 1 } // Only show valid ratings
+    })
       .populate([
         {
           path: 'user',
@@ -568,7 +571,9 @@ router.get('/public', async (req, res) => {
         }
       ])
       .sort({ createdAt: -1 })
-      .limit(limit);
+      .limit(limit)
+      .maxTimeMS(5000) // 5 second timeout
+      .lean(); // Improve performance by returning plain JS objects
 
     res.json({
       reviews
@@ -576,6 +581,15 @@ router.get('/public', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching public vendor reviews:', error);
+    
+    // Handle specific timeout errors
+    if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
+      return res.status(503).json({ 
+        message: 'Database temporarily unavailable', 
+        error: 'Connection timeout' 
+      });
+    }
+    
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });

@@ -132,9 +132,40 @@ app.get('/api/health', async (req, res) => {
     timestamp: new Date().toISOString(),
     database: dbStatus ? 'connected' : 'disconnected',
     environment: process.env.NODE_ENV,
-    version: '2.0.0',
+    version: '2.1.0',
     memory: process.memoryUsage(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    routes_status: {
+      auth: !!authRoutes,
+      users: !!userRoutes,
+      medicines: !!medicineRoutes,
+      orders: !!orderRoutes,
+      payments: !!paymentRoutes,
+      reviews: !!reviewRoutes,
+      serviceReviews: !!serviceReviewRoutes
+    }
+  });
+});
+
+// Debug endpoint for route testing
+app.get('/api/debug/routes', (req, res) => {
+  res.json({
+    message: 'Route debugging information',
+    routes_loaded: {
+      auth: !!authRoutes,
+      users: !!userRoutes,
+      medicines: !!medicineRoutes,
+      orders: !!orderRoutes,
+      payments: !!paymentRoutes,
+      reviews: !!reviewRoutes,
+      serviceReviews: !!serviceReviewRoutes
+    },
+    env_vars: {
+      JWT_SECRET: !!process.env.JWT_SECRET,
+      MONGODB_URI: !!process.env.MONGODB_URI,
+      FRONTEND_URL: process.env.FRONTEND_URL,
+      NODE_ENV: process.env.NODE_ENV
+    }
   });
 });
 

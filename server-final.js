@@ -85,8 +85,15 @@ app.locals.upload = upload;
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:5173',
+    'https://medzy-web.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -223,6 +230,47 @@ if (serviceReviewRoutes) {
   app.use('/api/service-reviews', serviceReviewRoutes);
   console.log('✅ Service review routes loaded');
 }
+
+// Debug endpoint to test data availability
+app.get('/api/debug/data-check', async (req, res) => {
+  try {
+    await connectDB();
+    
+    const Medicine = (await import('./models/Medicine.js')).default;
+    const Review = (await import('./models/Review.js')).default;
+    const User = (await import('./models/User.js')).default;
+    
+    const medicineCount = await Medicine.countDocuments({ isActive: true });
+    const reviewCount = await Review.countDocuments({});
+    const userCount = await User.countDocuments({});
+    
+    // Get sample data
+    const sampleMedicines = await Medicine.find({ isActive: true }).limit(3);
+    const sampleReviews = await Review.find({}).populate('user', 'firstName lastName').limit(3);
+    
+    res.json({
+      message: 'Data availability check',
+      counts: {
+        medicines: medicineCount,
+        reviews: reviewCount,
+        users: userCount
+      },
+      samples: {
+        medicines: sampleMedicines,
+        reviews: sampleReviews
+      },
+      database_connected: true,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Data check error:', error);
+    res.status(500).json({ 
+      error: 'Database connection or data access issue',
+      message: error.message,
+      database_connected: false
+    });
+  }
+});
 
 // Fallback test routes for missing modules
 app.get('/api/test/auth', (req, res) => {

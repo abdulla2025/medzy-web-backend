@@ -8,6 +8,7 @@ import multer from 'multer';
 
 // Import routes one by one to isolate any issues
 let authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes, reviewRoutes, serviceReviewRoutes;
+let cartRoutes, medicineRequestRoutes, supportRoutes, donationRoutes, profileRoutes;
 
 try {
   const modules = await Promise.all([
@@ -17,10 +18,17 @@ try {
     import('./routes/orders.js'),
     import('./routes/payments.js'),
     import('./routes/reviews.js'),
-    import('./routes/serviceReviews.js')
+    import('./routes/serviceReviews.js'),
+    // Import additional routes with error handling
+    import('./routes/cart.js').catch(() => ({ default: null })),
+    import('./routes/medicineRequests.js').catch(() => ({ default: null })),
+    import('./routes/support.js').catch(() => ({ default: null })),
+    import('./routes/donations.js').catch(() => ({ default: null })),
+    import('./routes/profile.js').catch(() => ({ default: null }))
   ]);
   
-  [authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes, reviewRoutes, serviceReviewRoutes] = modules.map(m => m.default);
+  [authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes, reviewRoutes, serviceReviewRoutes,
+   cartRoutes, medicineRequestRoutes, supportRoutes, donationRoutes, profileRoutes] = modules.map(m => m.default);
 } catch (error) {
   console.error('Error importing routes:', error);
   // Routes will be undefined, we'll handle this gracefully
@@ -229,6 +237,32 @@ if (reviewRoutes) {
 if (serviceReviewRoutes) {
   app.use('/api/service-reviews', serviceReviewRoutes);
   console.log('✅ Service review routes loaded');
+}
+
+// Add missing routes with fallback handling
+if (cartRoutes) {
+  app.use('/api/cart', cartRoutes);
+  console.log('✅ Cart routes loaded');
+}
+
+if (medicineRequestRoutes) {
+  app.use('/api/medicine-requests', medicineRequestRoutes);
+  console.log('✅ Medicine request routes loaded');
+}
+
+if (supportRoutes) {
+  app.use('/api/support', supportRoutes);
+  console.log('✅ Support routes loaded');
+}
+
+if (donationRoutes) {
+  app.use('/api/donations', donationRoutes);
+  console.log('✅ Donation routes loaded');
+}
+
+if (profileRoutes) {
+  app.use('/api/profile', profileRoutes);
+  console.log('✅ Profile routes loaded');
 }
 
 // Debug endpoint to test data availability

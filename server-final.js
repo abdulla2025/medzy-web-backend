@@ -7,7 +7,7 @@ import fs from 'fs';
 import multer from 'multer';
 
 // Import routes one by one to isolate any issues
-let authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes;
+let authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes, reviewRoutes, serviceReviewRoutes;
 
 try {
   const modules = await Promise.all([
@@ -15,10 +15,12 @@ try {
     import('./routes/users.js'),
     import('./routes/medicines.js'),
     import('./routes/orders.js'),
-    import('./routes/payments.js')
+    import('./routes/payments.js'),
+    import('./routes/reviews.js'),
+    import('./routes/serviceReviews.js')
   ]);
   
-  [authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes] = modules.map(m => m.default);
+  [authRoutes, userRoutes, medicineRoutes, orderRoutes, paymentRoutes, reviewRoutes, serviceReviewRoutes] = modules.map(m => m.default);
 } catch (error) {
   console.error('Error importing routes:', error);
   // Routes will be undefined, we'll handle this gracefully
@@ -96,7 +98,9 @@ app.get('/', (req, res) => {
     users: !!userRoutes,
     medicines: !!medicineRoutes,
     orders: !!orderRoutes,
-    payments: !!paymentRoutes
+    payments: !!paymentRoutes,
+    reviews: !!reviewRoutes,
+    serviceReviews: !!serviceReviewRoutes
   };
 
   res.json({ 
@@ -111,7 +115,9 @@ app.get('/', (req, res) => {
       auth: '/api/auth/*',
       medicines: '/api/medicines/*',
       orders: '/api/orders/*',
-      payments: '/api/payments/*'
+      payments: '/api/payments/*',
+      reviews: '/api/reviews/*',
+      serviceReviews: '/api/service-reviews/*'
     }
   });
 });
@@ -174,6 +180,17 @@ if (orderRoutes) {
 if (paymentRoutes) {
   app.use('/api/payments', paymentRoutes);
   console.log('✅ Payment routes loaded');
+}
+
+// Add review routes
+if (reviewRoutes) {
+  app.use('/api/reviews', reviewRoutes);
+  console.log('✅ Review routes loaded');
+}
+
+if (serviceReviewRoutes) {
+  app.use('/api/service-reviews', serviceReviewRoutes);
+  console.log('✅ Service review routes loaded');
 }
 
 // Fallback test routes for missing modules

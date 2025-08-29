@@ -213,7 +213,7 @@ router.get('/public', async (req, res) => {
           recommendationRate: { $avg: { $cond: ['$wouldRecommend', 1, 0] } }
         }
       }
-    ]).maxTimeMS(5000); // 5 second timeout for aggregation
+    ], { maxTimeMS: 5000 }); // 5 second timeout for aggregation
 
     const serviceStats = stats[0] || {
       avgDeliverySpeed: 0,

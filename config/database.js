@@ -10,14 +10,19 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const connectDB = async () => {
   try {
+    // Set global mongoose options for better timeout handling
+    mongoose.set('bufferCommands', false);
+    mongoose.set('bufferMaxEntries', 0);
+    
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       // Connection timeout options for production
-      serverSelectionTimeoutMS: 30000, // 30 seconds
-      socketTimeoutMS: 45000, // 45 seconds
+      serverSelectionTimeoutMS: 10000, // 10 seconds (reduced from 30)
+      socketTimeoutMS: 20000, // 20 seconds (reduced from 45)
+      connectTimeoutMS: 10000, // 10 seconds
       bufferMaxEntries: 0,
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      minPoolSize: 5,  // Maintain at least 5 socket connections
-      maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+      maxPoolSize: 5, // Reduced from 10 to 5 for better resource management
+      minPoolSize: 2,  // Reduced from 5 to 2
+      maxIdleTimeMS: 15000, // Reduced from 30 to 15 seconds
       // Retry options
       retryWrites: true,
       retryReads: true,

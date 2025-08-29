@@ -75,6 +75,10 @@ app.use(express.urlencoded({ extended: true })); // For SSL Commerce form data
 // Connect to MongoDB
 connectDB();
 
+// Set global mongoose query timeout for all operations
+import mongoose from 'mongoose';
+mongoose.set('maxTimeMS', 8000); // 8 second global timeout for all queries
+
 // Initialize email service
 import './services/emailService.js';
 
